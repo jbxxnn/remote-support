@@ -1,0 +1,235 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and authorization
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(STAFF)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]    @relation("EventStaff")
+  notes         Note[]
+  stations      Station[]
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+// NextAuth.js Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth.js Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Client model for managing client information
+model Client {
+  id              String   @id @default(cuid())
+  name            String
+  address         String
+  timezone        String
+  status          ClientStatus @default(ACTIVE)
+  emergencyContact String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  devices         Device[]
+  events          Event[]
+  schedules       Schedule[]
+  sopAssignments  SOPAssignment[]
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// Device model for managing client devices
+model Device {
+  id          String   @id @default(cuid())
+  type        DeviceType
+  label       String
+  priority    Int      @default(0)
+  status      DeviceStatus @default(ONLINE)
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  events      Event[]
+}
+
+enum DeviceType {
+  CAMERA
+  SENSOR
+  DOOR_SENSOR
+  MOTION_SENSOR
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+// Event model for tracking client events
+model Event {
+  id          String   @id @default(cuid())
+  type        EventType
+  status      EventStatus @default(NEW)
+  clipUrl     String?
+  clientId    String
+  deviceId    String?
+  staffId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  resolvedAt  DateTime?
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  device      Device?  @relation(fields: [deviceId], references: [id])
+  staff       User?    @relation("EventStaff", fields: [staffId], references: [id])
+  notes       Note[]
+}
+
+enum EventType {
+  MOTION
+  FALL
+  DOOR_OPEN
+  DOOR_CLOSE
+  CUSTOM
+}
+
+enum EventStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// Note model for event notes
+model Note {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  eventId   String
+  staffId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  staff     User     @relation(fields: [staffId], references: [id])
+}
+
+// Schedule model for client schedules
+model Schedule {
+  id          String   @id @default(cuid())
+  dayOfWeek   Int      // 0-6 for Sunday-Saturday
+  startTime   String   // HH:mm format
+  endTime     String   // HH:mm format
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// SOP (Standard Operating Procedure) model
+model SOP {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  steps       String   @db.Text
+  eventType   EventType
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  assignments SOPAssignment[]
+}
+
+// SOP Assignment model for linking SOPs to clients
+model SOPAssignment {
+  id        String   @id @default(cuid())
+  sopId     String
+  clientId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sop       SOP      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([sopId, clientId])
+}
+
+// Station model for tracking staff workstations
+model Station {
+  id        String   @id @default(cuid())
+  name      String
+  status    StationStatus @default(OFFLINE)
+  userId    String?
+  lastActive DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+enum StationStatus {
+  ONLINE
+  OFFLINE
+  IDLE
+  BUSY
+}
